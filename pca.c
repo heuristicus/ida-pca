@@ -4,16 +4,27 @@
 #include <math.h>
 
 double* generate_rv(int dimensionality);
-double covar(double* data1, double* data2, int lenn);
+double covar(double* data1, double* data2, int len);
 double var(double* data, int len);
 double expval(double* data, int len);
+double* centre(double* data, int len);
+void print_arr(double* data, int len);
 
 int main(int argc, char *argv[])
 {
-    double data[] = {1,2,3,4,5,6,7,8,9,10};
-    printf("ev %lf\n", expval(data, sizeof(data)/sizeof(double)));
-    printf("var %lf\n", var(data, sizeof(data)/sizeof(double)));
-    printf("expected value: %lf, variance: %lf\n", expval(data, sizeof(data)/sizeof(double)), var(data, sizeof(data)/sizeof(double)));
+    double data1[] = {1,2,3,4,5,6,7,8,9,10};
+    double data2[] = {10,8,5,5,6,3,2,5,3,1};
+    int len = sizeof(data1)/sizeof(double);
+    
+    printf("E[data1]: %lf, Var[data1]: %lf\n", expval(data1, len), var(data1, len));
+    printf("E[data2]: %lf, Var[data2]: %lf\n", expval(data2, len), var(data2, len));
+    printf("covar[data1,data1] %lf\n", covar(data1, data2, len));
+    printf("covar[data1,data2] %lf\n", covar(data1, data2, len));
+    double* cd1 = centre(data1, len);
+    double* cd2 = centre(data2, len);
+    print_arr(cd1, len);
+    print_arr(cd2, len);
+    
     return 0;
 }
 
@@ -39,30 +50,30 @@ double* generate_rv(int dimensionality)
 double expval(double* data, int len)
 {
     int i;
-    double sum;
+    double sum = 0;
     
     for (i = 0; i < len; ++i) {
 	sum += data[i];
-	printf("sum is %lf\n", sum);
     }
-    printf("sum over len %lf\n", sum/len);
     return sum/len;
 }
 
-// Calculate an estimate of the variance for a given set of data
+// Calculate the sample variance for the given set of data
 double var(double* data, int len)
 {
     int i;
-    double sum, exp_val;
-    exp_val = expval(data, len);
+    double sum = 0;
+    double exp_val = expval(data, len);
         
     for (i = 0; i < len; ++i) {
-	sum += pow(data[i] - exp_val, 2);
+	double res = pow(data[i] - exp_val, 2);
+	sum += res;
     }
-    return sum/len;
+
+    return sum/(len-1);
 }
 
-// Calculate an estimate of the covariance of a 2-dimensional 
+// Calculate an estimate of the covariance of two sets of samples
 double covar(double* data1, double* data2, int len)
 {
     // If X1 = X2, then CoVar[X1,X2] = Var[X1]
@@ -72,12 +83,37 @@ double covar(double* data1, double* data2, int len)
     
     int i;
     double sum, exp_val_1, exp_val_2;
-    exp_val_1 = var(data1, len);
-    exp_val_2 = var(data2, len);
+    exp_val_1 = expval(data1, len);
+    exp_val_2 = expval(data2, len);
     
     for (i = 0; i < len; ++i) {
 	sum += (data1[i] - exp_val_1) * (data2[i] - exp_val_2);
     }
 
-    return sum/len;
+    return sum/(len-1);
+}
+
+// Centres a set of samples by subtracting the mean of the sample from each value.
+double* centre(double* data, int len)
+{
+    double* ret = malloc(sizeof(double) * len);
+    
+    int i;
+    double mean = expval(data, len);
+    
+    for (i = 0; i < len; ++i) {
+	ret[i] = data[i] - mean;
+    }
+    
+    return ret;
+}
+
+// Prints an array
+void print_arr(double* data, int len)
+{
+    int i;
+    
+    for (i = 0; i < len; ++i) {
+	printf("%lf\n", data[i]);
+    }
 }
