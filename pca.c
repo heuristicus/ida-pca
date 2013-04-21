@@ -5,13 +5,24 @@
 #include <gsl/gsl_rng.h>
 #include <math.h>
 
+#define RV_PLOT_CENTRE 1
+#define RV_PLOT_DEFAULT 0
+
 typedef struct
 {
     double* data;
     int len;
 } dblarr;
 
+typedef struct
+{
+    dblarr** data;
+    int datalen;
+    int len;
+} dblarr_2d;
+
 dblarr* generate_rv(int realisations, double mean, double stdev);
+dblarr* generate_rv_simcov(double* cov_var, int len, double mean, double stdev, double cov_strength);
 double covar(double* data1, double* data2, int len);
 double var(double* data, int len);
 double expval(double* data, int len);
@@ -20,8 +31,9 @@ void print_arr(double* data, int len);
 void cleanup();
 void init_rng(int seed);
 dblarr* init_dblarr(int len);
+dblarr_2d* init_dblarr_2d(int datalen, int len);
 void free_dblarr(dblarr* arr);
-void gnuplot_2d(double* data1, double* data2, int len);
+void gnuplot_2d(double* data1, double* data2, int len, int centre);
 double arr_max(double* data, int len);
 double arr_min(double* data, int len);
 double min(double a, double b);
@@ -45,9 +57,13 @@ int main(int argc, char *argv[])
     /* printf("covar[data1,data2] %lf\n", covar(data1, data2, len)); */
 
     dblarr* x1 = generate_rv(50, 5, 10);
-    dblarr* x2 = generate_rv(50, 5, 10);
-
-    gnuplot_2d(x1->data, x2->data, x1->len);
+    dblarr* x2 = generate_rv_simcov(x1->data, x1->len, 10, 5, -0.5);
+//    dblarr* x2 = generate_rv(50, 10, 1);
+    
+    /* dblarr* cx1 = centre(x1->data, x1->len); */
+    /* dblarr* cx2 = centre(x2->data, x2->len); */
+    
+    gnuplot_2d(x1->data, x2->data, x1->len, RV_PLOT_CENTRE);
 //    print_arr(x1->data, x1->len);
 //    print_arr(x2->data, x2->len);
     
@@ -73,8 +89,6 @@ void cleanup()
     gsl_rng_free(rng);
 }
 
-
-
 // Generate the given number of realisations of a random variable from gaussians with
 // the given mean and stdev
 dblarr* generate_rv(int realisations, double mean, double stdev)
@@ -86,12 +100,34 @@ dblarr* generate_rv(int realisations, double mean, double stdev)
 	init_rng(0);
     }
 
-    // Generate a value for the RV in each dimension
     for (i = 0; i < realisations; ++i) {
 	randvar->data[i] = mean + gsl_ran_gaussian(rng, stdev);
     }
 
     return randvar;
+}
+
+// Generates a random variable which covaries with the given variable based on the
+// cov_strength parameter. A large negative value will result in a strongly negatively
+// correlated value, and a large positive value will result in a strongly positively
+// correlated value. Passing a value of zero is equivalent to calling the generate_rv
+// function with the given mean and standard deviation.
+dblarr* generate_rv_simcov(double* cov_var, int len, double mean, double stdev,
+			   double cov_strength)
+{
+    int i;
+    dblarr* randvar = init_dblarr(len);
+    
+    if (!rng_init){
+	init_rng(0);
+    }
+
+    // Generate a value for the RV in each dimension
+    for (i = 0; i < len; ++i) {
+	randvar->data[i] = mean + gsl_ran_gaussian(rng, stdev) + cov_strength * cov_var[i];
+    }
+
+    return randvar;    
 }
 
 // Calculate an estimate of the expected value for a given set of data
@@ -144,7 +180,7 @@ double covar(double* data1, double* data2, int len)
 // Centres a set of samples by subtracting the mean of the sample from each value.
 dblarr* centre(double* data, int len)
 {
-    dblarr* ret = malloc(sizeof(double) * len);
+    dblarr* ret = init_dblarr(len);
     
     int i;
     double mean = expval(data, len);
@@ -165,6 +201,24 @@ dblarr* init_dblarr(int len)
     return ret;
 }
 
+// Initialises a dblarr_2d struct, which contains an array of pointers
+// to dblarr structs. datalen indicates the length of each internal dblarr
+// struct. All of them must have the same length. The len parameter indicates
+// the number of dblarr structs this dblarr_2d struct will contain.
+dblarr_2d* init_dblarr_2d(int datalen, int len)
+{
+    int i;
+    dblarr_2d* ret = malloc(sizeof(dblarr_2d));
+    ret->data = malloc(sizeof(dblarr*) * len);
+    ret->datalen = datalen;
+    ret->len = len;
+    
+    for (i = 0; i < len; ++i) {
+	ret->data[i] = init_dblarr(datalen);
+    }
+    return ret;
+}
+
 // Frees a dblarr struct
 void free_dblarr(dblarr* arr)
 {
@@ -172,36 +226,63 @@ void free_dblarr(dblarr* arr)
     free(arr);
 }
 
-// Plots the values of two random variables as a scatter plot in gnuplot
-void gnuplot_2d(double* data1, double* data2, int len)
+// Plots the values of two random variables as a scatter plot in gnuplot.
+// The value of centred defines whether to print centred data or not.
+// RV_PLOT_CENTRE will centre values, RV_PLOT_DEFAULT will not. Passing
+// 1 or 0 has the same effect.
+void gnuplot_2d(double* data1, double* data2, int len, int centred)
 {
     FILE *fp = fopen("dfile.dat", "w");
 
     int i;
+
+    double* d1 = data1;
+    double* d2 = data2;
     
+    dblarr* cd1 = NULL;
+    dblarr* cd2 = NULL;
+
+    if (centred){
+	dblarr* cd1 = centre(data1, len);
+	dblarr* cd2 = centre(data2, len);
+	d1 = cd1->data;
+	d2 = cd2->data;
+    }
+	
     for (i = 0; i < len; ++i) {
-	fprintf(fp, "%lf %lf\n", data1[i], data2[i]);
+	fprintf(fp, "%lf %lf\n", d1[i], d2[i]);
     }
 
     fclose(fp);
 
-    double xmax = arr_max(data1, len);
-    double xmin = arr_min(data1, len);
-    double ymax = arr_max(data2, len);
-    double ymin = arr_min(data2, len);
+    double xmax = arr_max(d1, len);
+    double xmin = arr_min(d1, len);
+    double ymax = arr_max(d2, len);
+    double ymin = arr_min(d2, len);
 
     double maxy = absmax(ymax, ymin);
     double maxx = absmax(xmax, xmin);
+
+    double bothmax = max(maxy, maxx);
+
+    double mval = bothmax + bothmax/10;
 
     printf("xmax %lf xmin %lf ymax %lf ymin %lf\n", xmax, xmin, ymax, ymin);
     printf("maxx %lf, maxy %lf\n", maxx, maxy);
     FILE *pipe = popen("gnuplot -persist","w");
     /* fprintf(pipe, "set xrange [%lf:%lf]\n", xmin + xmin/10, xmax + xmax/10); */
     /* fprintf(pipe, "set yrange [%lf:%lf]\n", ymin + ymin/10, ymax + ymax/10); */
-    fprintf(pipe, "set xrange [%lf:%lf]\n", -(maxx + maxx/10), maxx + maxx/10);
-    fprintf(pipe, "set yrange [%lf:%lf]\n", -(maxy + maxy/10), maxy + maxy/10);
+    /* fprintf(pipe, "set xrange [%lf:%lf]\n", -(maxx + maxx/10), maxx + maxx/10); */
+    /* fprintf(pipe, "set yrange [%lf:%lf]\n", -(maxy + maxy/10), maxy + maxy/10); */
+    fprintf(pipe, "set xrange [%lf:%lf]\n", -mval, mval);
+    fprintf(pipe, "set yrange [%lf:%lf]\n", -mval, mval);
     fprintf(pipe, "plot 'dfile.dat' using 1:2 with points\n");
     fclose(pipe); 
+
+    if (centred){
+	free_dblarr(cd2);
+	free_dblarr(cd1);
+    }
 }
 
 // Find the largest value in an array
