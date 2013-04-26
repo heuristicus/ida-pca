@@ -19,22 +19,27 @@ int main(int argc, char *argv[])
     dblarr* x2 = generate_rv_simcov(x1->data, x1->len, 10, 5, -0.5);
 //    dblarr* x2 = generate_rv(50, 10, 1);
     
-    dblarr* cx1 = centre(x1->data, x1->len);
-    dblarr* cx2 = centre(x2->data, x2->len);
+    /* dblarr* cx1 = centre(x1->data, x1->len); */
+    /* dblarr* cx2 = centre(x2->data, x2->len); */
 
-    free_dblarr(cx1);
-    free_dblarr(cx2);
+    /* free_dblarr(cx1); */
+    /* free_dblarr(cx2); */
     
 //    gnuplot_2d(x1->data, x2->data, x1->len, RV_PLOT_CENTRE);
-    int rv_num = 2; // Number of random variables
+    int rv_num = 1; // Number of random variables
     int rs_num = 10; // Number of realisations for each
     dblarr* means = random_vector(rv_num, 10);
     dblarr* stdevs = random_vector(rv_num, 20);
     
     dblarr_2d* rv_set = generate_rv_set(means->data, stdevs->data, rv_num, rs_num);
+    dblarr_2d* centred_set = centre_set(rv_set);
     
-    print_dblarr(rv_set);
-
+    print_dblarr_2d(rv_set);
+    //  print_dblarr_2d(centred_set);
+    
+    //gnuplot_2d("def", rv_set->data[0]->data, rv_set->data[1]->data, rv_set->datalen, RV_PLOT_DEFAULT);
+    //gnuplot_2d("cent", centred_set->data[0]->data, centred_set->data[1]->data, rv_set->datalen, RV_PLOT_DEFAULT);
+    
     /* print_arr(means->data, means->len); */
     /* print_arr(stdevs->data, stdevs->len); */
 //    print_arr(x1->data, x1->len);
@@ -42,6 +47,10 @@ int main(int argc, char *argv[])
     
     free_dblarr(x1);
     free_dblarr(x2);
+    free_dblarr_2d(rv_set);
+    free_dblarr_2d(centred_set);
+    free_dblarr(means);
+    free_dblarr(stdevs);
     
     return 0;
 }
@@ -64,9 +73,10 @@ void cleanup()
 
 // Generates a set of rv_num random variables, each with num_re realisations which
 // are defined by the means and stdevs arrays, which should be of length rv_num.
+// The centre parameter indicates whether the generated random variables should be centred.
 dblarr_2d* generate_rv_set(double* means, double* stdevs, int rv_num, int num_re)
 {
-    dblarr_2d* rvset = init_dblarr_2d(num_re, rv_num);
+    dblarr_2d* rvset = init_dblarr_2d_bare(num_re, rv_num);
     
     int i;
     
@@ -116,6 +126,37 @@ dblarr* generate_rv_simcov(double* cov_var, int len, double mean, double stdev,
     }
 
     return randvar;    
+}
+
+// Initialises a gsl_matrix struct with the covariances of the RVs in the 
+// given set of RVs. The matrix returned is symmetric.
+gsl_matrix* make_covar_matrix(dblarr_2d* rv_set)
+{
+    gsl_matrix* covmat = gsl_matrix_alloc(rv_set->len, rv_set->len);
+    
+    int i, j;
+    
+    for (i = 0; i < rv_set->len; ++i) {
+	for (j = 0; j < rv_set->len; ++j) {
+	    printf("Initialising element %d,%d\n", i, j);
+	    gsl_matrix_set(covmat, i, j, covar(rv_set->data[i]->data, rv_set->data[j]->data, rv_set->datalen));
+	}
+    }
+
+    return covmat;
+}
+
+// Prints the values inside a gsl_matrix struct.
+void gsl_mat_print(gsl_matrix* mat)
+{
+    int i, j;
+
+    for (i = 0; i < mat->size1; ++i) {
+	for (j = 0; j < mat->size2; ++j) {
+	    printf("%lf ", gsl_matrix_get(mat, i, j));
+	}
+	printf("\n");
+    }
 }
 
 // Generates a vector of the requested length containing random values, sampled
@@ -188,12 +229,25 @@ dblarr* centre(double* data, int len)
     
     int i;
     double mean = expval(data, len);
-    
     for (i = 0; i < len; ++i) {
 	ret->data[i] = data[i] - mean;
     }
     
     return ret;
+}
+
+// Centres all arrays inside a dblarr_2d struct.
+dblarr_2d* centre_set(dblarr_2d* arr)
+{
+    dblarr_2d* centred = init_dblarr_2d_bare(arr->datalen, arr->len);
+    
+    int i;
+    
+    for (i = 0; i < arr->len; ++i) {
+	centred->data[i] = centre(arr->data[i]->data, arr->data[i]->len);
+    }
+    
+    return centred;
 }
 
 // Initialises a double array with the given length
@@ -206,20 +260,33 @@ dblarr* init_dblarr(int len)
 }
 
 // Initialises a dblarr_2d struct, which contains an array of pointers
-// to dblarr structs. num_vars indicates the length of each internal dblarr
+// to dblarr structs. num_vals indicates the length of each internal dblarr
 // struct. All of them must have the same length. The num_arrs parameter indicates
 // the number of dblarr structs this dblarr_2d struct will contain.
-dblarr_2d* init_dblarr_2d(int num_vars, int num_arrs)
+dblarr_2d* init_dblarr_2d(int num_vals, int num_arrs)
 {
     int i;
     dblarr_2d* ret = malloc(sizeof(dblarr_2d));
     ret->data = malloc(sizeof(dblarr*) * num_arrs);
-    ret->datalen = num_vars;
+    ret->datalen = num_vals;
     ret->len = num_arrs;
     
     for (i = 0; i < num_arrs; ++i) {
-	ret->data[i] = init_dblarr(num_vars);
+	ret->data[i] = init_dblarr(num_vals);
     }
+    return ret;
+}
+
+// Initialises a dblarr_2d struct, but does not allocate memory for individual
+// internal arrays. The assumption is made that the number of values specified
+// by the num_vals parameter is adhered to when the arrays are initialised.
+dblarr_2d* init_dblarr_2d_bare(int num_vals, int num_arrs)
+{
+    dblarr_2d* ret = malloc(sizeof(dblarr_2d));
+    ret->data = malloc(sizeof(dblarr*) * num_arrs);
+    ret->datalen = num_vals;
+    ret->len = num_arrs;
+
     return ret;
 }
 
@@ -230,13 +297,26 @@ void free_dblarr(dblarr* arr)
     free(arr);
 }
 
+// Frees all structs in the given dblarr_2d struct, and the struct itself
+void free_dblarr_2d(dblarr_2d* arr)
+{
+    int i;
+    
+    for (i = 0; i < arr->len; ++i) {
+	free_dblarr(arr->data[i]);
+    }
+    free(arr->data);
+    free(arr);
+}
+
 // Plots the values of two random variables as a scatter plot in gnuplot.
 // The value of centred defines whether to print centred data or not.
 // RV_PLOT_CENTRE will centre values, RV_PLOT_DEFAULT will not. Passing
-// 1 or 0 has the same effect.
-void gnuplot_2d(double* data1, double* data2, int len, int centred)
+// 1 or 0 has the same effect. The fname parameter specifies the file to
+// which data should be output.
+void gnuplot_2d(char* fname, double* data1, double* data2, int len, int centred)
 {
-    char* fname = GNUPLOT_FNAME;
+    fname = fname == NULL ? GNUPLOT_FNAME : fname;
     FILE *fp = fopen(fname, "w");
 
     int i;
@@ -283,7 +363,7 @@ void gnuplot_2d(double* data1, double* data2, int len, int centred)
     /* fprintf(pipe, "set yrange [%lf:%lf]\n", -(maxy + maxy/10), maxy + maxy/10); */
     fprintf(pipe, "set xrange [%lf:%lf]\n", -mval, mval);
     fprintf(pipe, "set yrange [%lf:%lf]\n", -mval, mval);
-    fprintf(pipe, "plot 'dfile.dat' using 1:2 with points\n");
+    fprintf(pipe, "plot '%s' using 1:2 with points\n", fname);
     fclose(pipe); 
 
     if (centred){
@@ -360,7 +440,7 @@ void print_arr(double* data, int len)
 }
 
 // Prints a dblarr struct
-void print_dblarr(dblarr_2d* arr)
+void print_dblarr_2d(dblarr_2d* arr)
 {
     int i;
     

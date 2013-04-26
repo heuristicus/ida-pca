@@ -3,6 +3,7 @@
 #include <time.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
+#include <gsl/gsl_matrix.h>
 #include <math.h>
 
 #define RV_PLOT_CENTRE 1
@@ -32,9 +33,9 @@ void print_arr(double* data, int len);
 void cleanup();
 void init_rng(int seed);
 dblarr* init_dblarr(int len);
-dblarr_2d* init_dblarr_2d(int num_vars, int num_arrs);
+dblarr_2d* init_dblarr_2d(int num_vals, int num_arrs);
 void free_dblarr(dblarr* arr);
-void gnuplot_2d(double* data1, double* data2, int len, int centre);
+void gnuplot_2d(char* fname, double* data1, double* data2, int len, int centred);
 double arr_max(double* data, int len);
 double arr_min(double* data, int len);
 double min(double a, double b);
@@ -43,4 +44,8 @@ double absmax(double a, double b);
 double absmin(double a, double b);
 dblarr_2d* generate_rv_set(double* means, double* stdevs, int rv_num, int num_re);
 dblarr* random_vector(int len, double multiplier);
-void print_dblarr(dblarr_2d* arr);
+void print_dblarr_2d(dblarr_2d* arr);
+gsl_matrix* make_covar_matrix(dblarr_2d* rv_set);
+dblarr_2d* centre_set(dblarr_2d* arr);
+void free_dblarr_2d(dblarr_2d* arr);
+dblarr_2d* init_dblarr_2d_bare(int num_vals, int num_arrs);
